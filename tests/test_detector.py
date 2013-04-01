@@ -5,8 +5,6 @@ import pytest
 
 from fsdetect import Detector
 
-from .helpers import stub_raise_later
-
 #
 # 'create' event
 #
