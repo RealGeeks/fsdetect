@@ -43,29 +43,31 @@ class Detector(object):
 
     def _on_event(self, raw_event):
         if raw_event.mask & pyinotify.IN_MOVED_FROM:
+            self._handle_previous_moved_from()
             self._previous_moved_from = raw_event
-            return
-
-        if raw_event.mask & pyinotify.IN_MOVED_TO:
+        elif raw_event.mask & pyinotify.IN_MOVED_TO:
             self._previous_moved_from = None
-            self.notify_handlers(raw_event, 'MOVE')
+            event = Event(raw_event.pathname, getattr(raw_event, 'src_pathname', None))
+            self.notify_handlers_2('MOVE', event)
         else:
-            if self._previous_moved_from is not None:
-                self.notify_handlers(self._previous_moved_from, 'MOVE')
-                self._previous_moved_from = None
-            self.notify_handlers(raw_event)
+            self._handle_previous_moved_from()
+            event = Event(raw_event.pathname, None)
+            maskname = self._parse_maskname(raw_event)
+            self.notify_handlers_2(maskname, event)
 
-    def notify_handlers(self, raw_event, maskname=None):
-        if maskname is None:
-            maskname = raw_event.maskname
-            if raw_event.mask & pyinotify.IN_ISDIR:
-                maskname = maskname.replace('|IN_ISDIR', '')
+    def _parse_maskname(self, raw_event):
+        if raw_event.mask & pyinotify.IN_ISDIR:
+            return raw_event.maskname.replace('|IN_ISDIR', '')
+        else:
+            return raw_event.maskname
 
-        event = Event(
-            raw_event.pathname,
-            getattr(raw_event, 'src_pathname', None)
-        )
+    def _handle_previous_moved_from(self):
+        if self._previous_moved_from is not None:
+            event = Event(None, self._previous_moved_from.pathname)
+            self.notify_handlers_2('MOVE', event)
+            self._previous_moved_from = None
 
+    def notify_handlers_2(self, maskname, event):
         for handler in self._handlers[maskname]:
             if handler(event):
                 break

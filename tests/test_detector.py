@@ -178,7 +178,7 @@ def test_should_provide_object_with_pathname_attribute_to_handler_on_file_remova
 # 'move' event
 #
 
-def test_should_detect_file_move(tmpdir):
+def test_should_detect_file_normal_move(tmpdir):
     basedir = tmpdir.mkdir('mydir')
     basedir.join('old.txt').ensure(file=True)
     on_move = mock.Mock(return_value=True)
@@ -193,7 +193,7 @@ def test_should_detect_file_move(tmpdir):
     assert on_move.call_count == 1
 
 
-def test_should_detect_directory_move(tmpdir):
+def test_should_detect_directory_normal_move(tmpdir):
     basedir = tmpdir.mkdir('mydir')
     basedir.join('olddir').ensure(dir=True)
     on_move = mock.Mock(return_value=True)
@@ -208,7 +208,7 @@ def test_should_detect_directory_move(tmpdir):
     assert on_move.call_count == 1
 
 
-def test_should_provide_object_with_pathname_and_src_pathname_attributed_to_handler(tmpdir):
+def test_should_provide_object_with_pathname_and_src_pathname_attributed_to_handler_on_normal_move(tmpdir):
     basedir = tmpdir.mkdir('mydir')
     basedir.join('old.txt').ensure(file=True)
 
@@ -244,12 +244,13 @@ def test_should_detect_file_move_from_outside_watched_directory(tmpdir):
     assert on_move.call_count == 1
 
 
-def test_should_receive_empty_src_pathname_when_file_was_moved_from_outside_watched_directory(tmpdir):
+def test_should_provide_object_with_pathname_and_empty_src_pathname_when_moved_from_outside_into_watched_dir(tmpdir):
     basedir = tmpdir.mkdir('base')
     basedir.mkdir('watched')
     basedir.join('old.txt').ensure(file=True)
 
     def on_move(event):
+        assert event.pathname == str(basedir.join('watched', 'new.txt'))
         assert event.src_pathname is None
 
     detector = Detector(str(basedir.join('watched')))
@@ -292,5 +293,69 @@ def test_should_detect_file_move_from_inside_watched_directory_to_outside(tmpdir
     assert on_move.call_count == 1
 
 
+def test_should_provide_object_with_empty_pathname_and_src_pathname_when_moved_from_inside_watched_dir_to_outsite(tmpdir):
+    basedir = tmpdir.mkdir('base')
+    basedir.mkdir('watched').join('old.txt').ensure(file=True)
+
+    def on_move(event):
+        assert event.pathname is None
+        assert event.src_pathname == str(basedir.join('watched', 'old.txt'))
+
+    detector = Detector(str(basedir.join('watched')))
+    detector.on('move', on_move)
+
+    os.rename(str(basedir.join('watched', 'old.txt')),
+              str(basedir.join('new.txt')))
+    basedir.join('watched', 'useless.txt').ensure(file=True)
+    detector.check()
+
+
 def test_should_correctly_detect_two_consecutive_moves_from_inside_watched_directory_to_outside(tmpdir):
-    pass
+    basedir = tmpdir.mkdir('base')
+    basedir.mkdir('watched')
+    basedir.join('watched', 'old1.txt').ensure(file=True)
+    basedir.join('watched', 'old2.txt').ensure(file=True)
+
+    on_move = mock.Mock(return_value=None)
+
+    detector = Detector(str(basedir.join('watched')))
+    detector.on('move', on_move)
+
+    os.rename(str(basedir.join('watched', 'old1.txt')),
+              str(basedir.join('new1.txt')))
+    os.rename(str(basedir.join('watched', 'old2.txt')),
+              str(basedir.join('new2.txt')))
+    basedir.join('watched', 'useless.txt').ensure(file=True)
+
+    detector.check()
+
+    assert on_move.call_count == 2
+
+
+def test_should_provide_consistent_object_with_consecutive_moves_from_inside_watched_dir_to_outsie(tmpdir):
+    basedir = tmpdir.mkdir('base')
+    basedir.mkdir('watched')
+    basedir.join('watched', 'old1.txt').ensure(file=True)
+    basedir.join('watched', 'old2.txt').ensure(file=True)
+
+    def on_first_move(event):
+        assert event.pathname is None
+        assert event.src_pathname == str(basedir.join('watched', 'old1.txt'))
+    def on_second_move(event):
+        assert event.pathname is None
+        assert event.src_pathname == str(basedir.join('watched', 'old2.txt'))
+
+    handlers = [on_first_move, on_second_move]
+    def on_consecutive_moves(event):
+        handlers.pop(0)(event)
+
+    detector = Detector(str(basedir.join('watched')))
+    detector.on('move', on_consecutive_moves)
+
+    os.rename(str(basedir.join('watched', 'old1.txt')),
+              str(basedir.join('new1.txt')))
+    os.rename(str(basedir.join('watched', 'old2.txt')),
+              str(basedir.join('new2.txt')))
+    basedir.join('watched', 'useless.txt').ensure(file=True)
+
+    detector.check()
