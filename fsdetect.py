@@ -19,13 +19,16 @@ class Detector(object):
         self._handlers = defaultdict(list)
 
     def on(self, event_name, handler):
+        mask = pyinotify.EventsCodes.OP_FLAGS['IN_' + event_name.upper()]
+        maskname = pyinotify.EventsCodes.maskname(mask)
+
         self._manager.add_watch(
             path=self._directory,
-            mask=pyinotify.IN_CREATE, 
+            mask=mask,
             rec=True,
             auto_add=True
         )
-        self._handlers['IN_CREATE'].append(handler)
+        self._handlers[maskname].append(handler)
 
     def check(self):
         self._notifier.process_events()

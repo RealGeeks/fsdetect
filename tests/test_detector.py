@@ -1,3 +1,5 @@
+import os
+
 import mock
 import pytest
 
@@ -128,3 +130,34 @@ def test_should_let_handler_exceptions_be_raised_and_abort_chain(tmpdir):
 
     assert on_create1.call_count == 1
     assert on_create2.call_count == 0
+
+#
+# 'delete' event
+#
+
+def test_should_detect_file_removal(tmpdir):
+    basedir = tmpdir.mkdir('mydir')
+    basedir.join('myfile.txt').ensure(file=True)
+    on_delete = mock.Mock(return_value=None)
+
+    detector = Detector(str(basedir))
+    detector.on('delete', on_delete)
+
+    os.remove(str(basedir.join('myfile.txt')))
+    detector.check()
+
+    assert on_delete.call_count == 1
+
+
+def test_should_detect_directory_removal(tmpdir):
+    basedir = tmpdir.mkdir('mydir')
+    basedir.join('dir1').ensure(dir=True)
+    on_delete = mock.Mock(return_value=None)
+
+    detector = Detector(str(basedir))
+    detector.on('delete', on_delete)
+
+    os.rmdir(str(basedir.join('dir1')))
+    detector.check()
+
+    assert on_delete.call_count == 1
