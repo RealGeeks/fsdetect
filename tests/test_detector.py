@@ -359,3 +359,31 @@ def test_should_provide_consistent_object_with_consecutive_moves_from_inside_wat
     basedir.join('watched', 'useless.txt').ensure(file=True)
 
     detector.check()
+
+
+#
+# multiples events
+#
+
+def test_should_listen_to_multiple_events(tmpdir):
+    on_create = mock.Mock(return_value=None)
+    on_delete = mock.Mock(return_value=None)
+    on_move = mock.Mock(return_value=None)
+
+    detector = Detector(str(tmpdir))
+    detector.on('create', on_create)
+    detector.on('delete', on_delete)
+    detector.on('move', on_move)
+
+    # create
+    tmpdir.join('file.txt').ensure(file=True)
+    # move
+    os.rename(str(tmpdir.join('file.txt')), str(tmpdir.join('doc.txt')))
+    # delete
+    os.remove(str(tmpdir.join('doc.txt')))
+
+    detector.check()
+
+    assert on_create.call_count == 1
+    assert on_delete.call_count == 1
+    assert on_move.call_count == 1

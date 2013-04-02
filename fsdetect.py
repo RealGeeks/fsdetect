@@ -16,6 +16,8 @@ class Detector(object):
             self._on_event,
             timeout=10
         )
+        self._wds = None
+        self._full_mask = None
         self._handlers = defaultdict(list)
         self._previous_moved_from = None
 
@@ -27,12 +29,15 @@ class Detector(object):
             mask = pyinotify.EventsCodes.OP_FLAGS['IN_' + event_name.upper()]
             maskname = pyinotify.EventsCodes.maskname(mask)
 
-        self._manager.add_watch(
-            path=self._directory,
-            mask=mask,
-            rec=True,
-            auto_add=True
-        )
+        if self._wds is not None:
+            self._full_mask |= mask
+            self._manager.update_watch(self._wds.values(), mask=self._full_mask,
+                                       rec=True, auto_add=True)
+        else:
+            self._full_mask = mask
+            self._wds = self._manager.add_watch(self._directory, mask=self._full_mask,
+                                                rec=True, auto_add=True)
+
         self._handlers[maskname].append(handler)
 
     def check(self):
