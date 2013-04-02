@@ -39,6 +39,7 @@ class Detector(object):
                                                 rec=True, auto_add=True)
 
         self._handlers[maskname].append(handler)
+        return self
 
     def check(self):
         self._notifier.process_events()

@@ -387,3 +387,22 @@ def test_should_listen_to_multiple_events(tmpdir):
     assert on_create.call_count == 1
     assert on_delete.call_count == 1
     assert on_move.call_count == 1
+
+
+def test_should_allow_nested_on_method_calls(tmpdir):
+    on_create = mock.Mock(return_value=None)
+    on_delete = mock.Mock(return_value=None)
+
+    detector = Detector(str(tmpdir))
+    detector.on('create', on_create) \
+            .on('delete', on_delete)
+
+    # create
+    tmpdir.join('file.txt').ensure(file=True)
+    # delete
+    os.remove(str(tmpdir.join('file.txt')))
+
+    detector.check()
+
+    assert on_create.call_count == 1
+    assert on_delete.call_count == 1
