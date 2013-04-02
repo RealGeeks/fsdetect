@@ -1,4 +1,4 @@
-# fsdetect - a simpler API to pyinotify
+# fsdetect - a simpler API to pyinotify [![Build Status](https://travis-ci.org/RealGeeks/fsdetect.png?branch=master)](https://travis-ci.org/RealGeeks/fsdetect)
 
 This project doesn't aim to replace [pyinotify](https://github.com/seb-m/pyinotify),
 just offers a simpler API for some situations.
