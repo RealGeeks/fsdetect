@@ -1,0 +1,6 @@
+fsdetect.py
+fsdetect.egg-info/PKG-INFO
+fsdetect.egg-info/SOURCES.txt
+fsdetect.egg-info/dependency_links.txt
+fsdetect.egg-info/requires.txt
+fsdetect.egg-info/top_level.txt

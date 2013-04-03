@@ -1,0 +1,272 @@
+commit d5794ef6f5d8571dcddda147d5bf67abdf4fc049
+Author: Igor Sobreira <igor@igorsobreira.com>
+Date:   Wed Apr 3 04:35:18 2013 +0000
+
+    create example
+
+diff --git a/examples/watch_directory.py b/examples/watch_directory.py
+new file mode 100644
+index 0000000..b2e62be
+--- /dev/null
++++ b/examples/watch_directory.py
+@@ -0,0 +1,35 @@
++'''
++Example of watching the directory recursivelly.
++
++Every new file/directory created/removed/moved will
++be detected.
++
++'''
++import time
++from fsdetect import Detector
++
++
++def on_move(event):
++    # depending on where the files was moved from/to we might
++    # not know the source or destination
++    # see README.md for more details
++    print 'moved {0} to {1}'.format((event.pathname or '<unknown destination>'),
++                                    (event.src_pathname or '<unknown source>'))
++
++def on_create(event):
++    print 'created: ', event.pathname
++
++def on_delete(event):
++    print 'deleted: ', event.pathname
++
++
++detector = Detector('/tmp/files')
++detector.on('create', on_create) \
++        .on('move', on_move) \
++        .on('delete', on_delete)
++
++
++while 1:
++    detector.check()
++    # do some real work...
++    time.sleep(0.5)
+
+commit a8b89b8a6086f04bc3accc05143f4616bb3528c0
+Author: Igor Sobreira <igor@igorsobreira.com>
+Date:   Wed Apr 3 04:11:21 2013 +0000
+
+    ignore hidden files by default
+
+diff --git a/fsdetect.py b/fsdetect.py
+index 4e6d6a0..28d8622 100644
+--- a/fsdetect.py
++++ b/fsdetect.py
+@@ -1,20 +1,37 @@
+ import time
++import os
+ from collections import defaultdict
+ from collections import namedtuple
+ 
+ import pyinotify
+ 
++
++__all__ = 'Detector', 'Event'
++
++
+ Event = namedtuple('Event', ('pathname', 'src_pathname'))
+ 
+ class Detector(object):
++    '''
++    Watches for events on a single file or directory
++
++    Multiple calls to `on()` can be made to detect multiple events.
++    `check()` needs to be called periodically to call fire the event
++    handlers.
++
++    '''
++
++    check_timeout = 10  # milliseconds
+ 
+     def __init__(self, directory):
+         self._directory = directory
+-        self._manager = pyinotify.WatchManager()
++        self._manager = pyinotify.WatchManager(
++            exclude_filter=is_hidden
++        )
+         self._notifier = pyinotify.Notifier(
+             self._manager,
+             self._on_event,
+-            timeout=10
++            timeout=self.check_timeout,
+         )
+         self._wds = None
+         self._full_mask = None
+@@ -22,6 +39,27 @@ class Detector(object):
+         self._previous_moved_from = None
+ 
+     def on(self, event_name, handler):
++        '''
++        Adds new handler to event.
++
++        `event` is the event name to be watched.
++
++        Works for all pyinotify events, with a small syntax change, removing
++        the 'IN_' prefix and lowercase, ex: 'IN_CREATE' becomes 'create'
++
++        There is a special event 'move' that handles 'IN_MOVED_FROM' and
++        'IN_MOVED_TO', see README.md for more details.
++
++        `handler` should be a callable.
++
++        Multiple calls with same 'event' will chain the handlers, if any handler
++        returns `True` the next handlers won't be called.
++
++        Every handler reveives an instance of `Event` object. This object is not
++        the same as pyinotify event. Depending on the event being handled it
++        can have `pathname` and/or `src_pathname` attributes.
++
++        '''
+         if event_name == 'move':
+             mask = pyinotify.IN_MOVED_FROM | pyinotify.IN_MOVED_TO
+             maskname = 'MOVE'
+@@ -42,13 +80,30 @@ class Detector(object):
+         return self
+ 
+     def check(self):
++        '''
++        Must be called periodically to fire the handlers, usually inside
++        a loop in the main application.
++
++        Will block for `self.check_timeout` milliseconds
++
++        '''
+         self._notifier.process_events()
+         while self._notifier.check_events():
+             self._notifier.read_events()
+             self._notifier.process_events()
+ 
++    def ignored(self, raw_event):
++        '''
++        Called when any event is received to verify if it should be ignored.
++        By default ignores hidden files.
++
++        '''
++        return is_hidden(raw_event.pathname)
++
+     def _on_event(self, raw_event):
+-        if raw_event.mask & pyinotify.IN_MOVED_FROM:
++        if self.ignored(raw_event):
++            return
++        elif raw_event.mask & pyinotify.IN_MOVED_FROM:
+             self._handle_previous_moved_from()
+             self._previous_moved_from = raw_event
+         elif raw_event.mask & pyinotify.IN_MOVED_TO:
+@@ -77,3 +132,11 @@ class Detector(object):
+         for handler in self._handlers[maskname]:
+             if handler(event):
+                 break
++
++
++def is_hidden(pathname):
++    '''
++    Returns True if `pathname` is a hidden file or directory
++
++    '''
++    return os.path.split(pathname)[1].startswith('.')
+diff --git a/tests/test_detector.py b/tests/test_detector.py
+index e78c195..1fed810 100644
+--- a/tests/test_detector.py
++++ b/tests/test_detector.py
+@@ -3,7 +3,7 @@ import os
+ import mock
+ import pytest
+ 
+-from fsdetect import Detector
++from fsdetect import Detector, is_hidden
+ 
+ #
+ # 'create' event
+@@ -406,3 +406,88 @@ def test_should_allow_nested_on_method_calls(tmpdir):
+ 
+     assert on_create.call_count == 1
+     assert on_delete.call_count == 1
++
++
++#
++# ignore hidden files
++#
++
++def test_should_not_watch_hidden_directories(tmpdir):
++    # hidden directories are not watched
++    tmpdir.join('dir1').ensure(dir=True)
++    tmpdir.join('dir1', '.dir2').ensure(dir=True)
++
++    on_create = mock.Mock(return_value=None)
++    on_delete = mock.Mock(return_value=None)
++
++    detector = Detector(str(tmpdir))
++    detector.on('create', on_create) \
++            .on('delete', on_delete)
++
++    # create normal file inside hidden directory
++    tmpdir.join('dir1', '.dir2', 'doc.txt').ensure(file=True)
++    assert_not_called(detector, on_create)
++
++    # delete normal file inside hidden directory
++    os.remove(str(tmpdir.join('dir1', '.dir2', 'doc.txt')))
++    assert_not_called(detector, on_delete)
++
++
++def test_should_ignore_events_for_hidden_files(tmpdir):
++    # events for hidden files inside watched directory are ignored
++    tmpdir.join('dir1').ensure(dir=True)
++
++    on_create = mock.Mock(return_value=None)
++    on_delete = mock.Mock(return_value=None)
++
++    detector = Detector(str(tmpdir))
++    detector.on('create', on_create) \
++            .on('delete', on_delete)
++
++    # create hidden file
++    tmpdir.join('dir1', '.file.txt').ensure(file=True)
++    assert_not_called(detector, on_create)
++
++    # delete hidden file
++    os.remove(str(tmpdir.join('dir1', '.file.txt')))
++    assert_not_called(detector, on_delete)
++
++
++def test_should_not_ignore_hidden_files_when_renamed_to_visible_files(tmpdir):
++    tmpdir.join('dir1').ensure(dir=True)
++
++    on_move = mock.Mock(return_value=None)
++
++    detector = Detector(str(tmpdir))
++    detector.on('move', on_move)
++
++    tmpdir.join('.invisible.pdf').ensure(file=True)
++    os.rename(str(tmpdir.join('.invisible.pdf')),
++              str(tmpdir.join('visible.pdf')))
++
++    detector.check()
++
++    assert on_move.call_count == 1
++
++#
++# is_hidden() helper function
++#
++
++def test_is_hidden():
++    assert is_hidden('/tmp/.file.txt')
++    assert is_hidden('/tmp/.file.out.txt')
++    assert is_hidden('/tmp/sub/dir/.file.txt')
++    assert is_hidden('/tmp/.dir')
++    assert is_hidden('/tmp/sub/dir/.hidden')
++    assert not is_hidden('/tmp/file.txt')
++    assert not is_hidden('/tmp/sub/dir/doc.pdf')
++    assert not is_hidden('/tmp/dir1/dir2')
++
++
++#
++# asserts
++#
++
++def assert_not_called(detector, handler):
++    detector.check()
++    assert handler.call_count == 0
