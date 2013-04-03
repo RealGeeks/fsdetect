@@ -60,3 +60,13 @@ detector.check()
 In order to implement this behaviour in the third case, a `IN_MOVED_FROM` event is detected
 but the handler is not called until the next event arrived, to be able to verify if the
 destination will be known or not.
+
+### Ignoring hidden files and directories
+
+Hidden files and directories are automatically ignored. The internal pyinotify `WatchManager`
+instance is configured to ignore hidden paths, so they are not watched.
+
+But if a hidden file is created (or any other event) inside a watched directory
+there is no way to tell pyinotify to don't watch this file
+(see [this issue](https://github.com/seb-m/pyinotify/issues/31) for details).
+`fsdetect` handles this case ignoring the received events related to hidden files.
