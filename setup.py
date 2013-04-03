@@ -23,5 +23,6 @@ setup(
         'Topic :: System :: Monitoring',
     ],
     license='MIT',
+    install_requires=['pyinotify'],
     py_modules=['fsdetect'],
 )
