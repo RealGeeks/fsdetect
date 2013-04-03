@@ -1,20 +1,37 @@
 import time
+import os
 from collections import defaultdict
 from collections import namedtuple
 
 import pyinotify
 
+
+__all__ = 'Detector', 'Event'
+
+
 Event = namedtuple('Event', ('pathname', 'src_pathname'))
 
 class Detector(object):
+    '''
+    Watches for events on a single file or directory
+
+    Multiple calls to `on()` can be made to detect multiple events.
+    `check()` needs to be called periodically to call fire the event
+    handlers.
+
+    '''
+
+    check_timeout = 10  # milliseconds
 
     def __init__(self, directory):
         self._directory = directory
-        self._manager = pyinotify.WatchManager()
+        self._manager = pyinotify.WatchManager(
+            exclude_filter=is_hidden
+        )
         self._notifier = pyinotify.Notifier(
             self._manager,
             self._on_event,
-            timeout=10
+            timeout=self.check_timeout,
         )
         self._wds = None
         self._full_mask = None
@@ -22,6 +39,27 @@ class Detector(object):
         self._previous_moved_from = None
 
     def on(self, event_name, handler):
+        '''
+        Adds new handler to event.
+
+        `event` is the event name to be watched.
+
+        Works for all pyinotify events, with a small syntax change, removing
+        the 'IN_' prefix and lowercase, ex: 'IN_CREATE' becomes 'create'
+
+        There is a special event 'move' that handles 'IN_MOVED_FROM' and
+        'IN_MOVED_TO', see README.md for more details.
+
+        `handler` should be a callable.
+
+        Multiple calls with same 'event' will chain the handlers, if any handler
+        returns `True` the next handlers won't be called.
+
+        Every handler reveives an instance of `Event` object. This object is not
+        the same as pyinotify event. Depending on the event being handled it
+        can have `pathname` and/or `src_pathname` attributes.
+
+        '''
         if event_name == 'move':
             mask = pyinotify.IN_MOVED_FROM | pyinotify.IN_MOVED_TO
             maskname = 'MOVE'
@@ -42,13 +80,30 @@ class Detector(object):
         return self
 
     def check(self):
+        '''
+        Must be called periodically to fire the handlers, usually inside
+        a loop in the main application.
+
+        Will block for `self.check_timeout` milliseconds
+
+        '''
         self._notifier.process_events()
         while self._notifier.check_events():
             self._notifier.read_events()
             self._notifier.process_events()
 
+    def ignored(self, raw_event):
+        '''
+        Called when any event is received to verify if it should be ignored.
+        By default ignores hidden files.
+
+        '''
+        return is_hidden(raw_event.pathname)
+
     def _on_event(self, raw_event):
-        if raw_event.mask & pyinotify.IN_MOVED_FROM:
+        if self.ignored(raw_event):
+            return
+        elif raw_event.mask & pyinotify.IN_MOVED_FROM:
             self._handle_previous_moved_from()
             self._previous_moved_from = raw_event
         elif raw_event.mask & pyinotify.IN_MOVED_TO:
@@ -77,3 +132,11 @@ class Detector(object):
         for handler in self._handlers[maskname]:
             if handler(event):
                 break
+
+
+def is_hidden(pathname):
+    '''
+    Returns True if `pathname` is a hidden file or directory
+
+    '''
+    return os.path.split(pathname)[1].startswith('.')

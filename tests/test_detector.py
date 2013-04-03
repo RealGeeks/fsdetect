@@ -3,7 +3,7 @@ import os
 import mock
 import pytest
 
-from fsdetect import Detector
+from fsdetect import Detector, is_hidden
 
 #
 # 'create' event
@@ -406,3 +406,88 @@ def test_should_allow_nested_on_method_calls(tmpdir):
 
     assert on_create.call_count == 1
     assert on_delete.call_count == 1
+
+
+#
+# ignore hidden files
+#
+
+def test_should_not_watch_hidden_directories(tmpdir):
+    # hidden directories are not watched
+    tmpdir.join('dir1').ensure(dir=True)
+    tmpdir.join('dir1', '.dir2').ensure(dir=True)
+
+    on_create = mock.Mock(return_value=None)
+    on_delete = mock.Mock(return_value=None)
+
+    detector = Detector(str(tmpdir))
+    detector.on('create', on_create) \
+            .on('delete', on_delete)
+
+    # create normal file inside hidden directory
+    tmpdir.join('dir1', '.dir2', 'doc.txt').ensure(file=True)
+    assert_not_called(detector, on_create)
+
+    # delete normal file inside hidden directory
+    os.remove(str(tmpdir.join('dir1', '.dir2', 'doc.txt')))
+    assert_not_called(detector, on_delete)
+
+
+def test_should_ignore_events_for_hidden_files(tmpdir):
+    # events for hidden files inside watched directory are ignored
+    tmpdir.join('dir1').ensure(dir=True)
+
+    on_create = mock.Mock(return_value=None)
+    on_delete = mock.Mock(return_value=None)
+
+    detector = Detector(str(tmpdir))
+    detector.on('create', on_create) \
+            .on('delete', on_delete)
+
+    # create hidden file
+    tmpdir.join('dir1', '.file.txt').ensure(file=True)
+    assert_not_called(detector, on_create)
+
+    # delete hidden file
+    os.remove(str(tmpdir.join('dir1', '.file.txt')))
+    assert_not_called(detector, on_delete)
+
+
+def test_should_not_ignore_hidden_files_when_renamed_to_visible_files(tmpdir):
+    tmpdir.join('dir1').ensure(dir=True)
+
+    on_move = mock.Mock(return_value=None)
+
+    detector = Detector(str(tmpdir))
+    detector.on('move', on_move)
+
+    tmpdir.join('.invisible.pdf').ensure(file=True)
+    os.rename(str(tmpdir.join('.invisible.pdf')),
+              str(tmpdir.join('visible.pdf')))
+
+    detector.check()
+
+    assert on_move.call_count == 1
+
+#
+# is_hidden() helper function
+#
+
+def test_is_hidden():
+    assert is_hidden('/tmp/.file.txt')
+    assert is_hidden('/tmp/.file.out.txt')
+    assert is_hidden('/tmp/sub/dir/.file.txt')
+    assert is_hidden('/tmp/.dir')
+    assert is_hidden('/tmp/sub/dir/.hidden')
+    assert not is_hidden('/tmp/file.txt')
+    assert not is_hidden('/tmp/sub/dir/doc.pdf')
+    assert not is_hidden('/tmp/dir1/dir2')
+
+
+#
+# asserts
+#
+
+def assert_not_called(detector, handler):
+    detector.check()
+    assert handler.call_count == 0
