@@ -73,7 +73,7 @@ there is no way to tell pyinotify to don't watch this file
 (see [this issue](https://github.com/seb-m/pyinotify/issues/31) for details).
 `fsdetect` handles this case ignoring the received events related to hidden files.
 
-### Contributing
+## Contributing
 
 Create a fork of the [repository on github](https://github.com/realgeeks/fsdetect), make your
 changes and send a pull request. Make sure your feature/bugfix has enough test coverage.
